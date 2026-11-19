@@ -22,6 +22,7 @@ public sealed class SettingsForm : Form
     private readonly Label hotKeyHint = new() { AutoSize = true, Text = "点击输入框后按下组合键，例如 Ctrl+Alt+Shift+V。" };
     private readonly CheckBox notifications = new() { Text = "成功粘贴后显示托盘通知", AutoSize = true };
     private readonly NumericUpDown maxCharacters = new() { Minimum = 1_000, Maximum = 5_000_000, Increment = 10_000, Width = 140 };
+    private readonly TextBox proxyBox = new() { Width = 260 };
     private readonly ComboBox presets = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
     private readonly PropertyGrid styleGrid = new() { Dock = DockStyle.Fill, HelpVisible = true, ToolbarVisible = true };
     private readonly DataGridView rulesGrid = new() { Dock = DockStyle.Fill, AllowUserToAddRows = false, AllowUserToDeleteRows = false, AutoGenerateColumns = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false };
@@ -86,6 +87,11 @@ public sealed class SettingsForm : Form
         maxCharacters.Value = working.MaxClipboardCharacters;
         layout.Controls.Add(new Label { Text = "剪贴板字符上限", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
         layout.Controls.Add(maxCharacters, 1, 3);
+
+        proxyBox.Text = working.UpdateProxy;
+        layout.Controls.Add(new Label { Text = "更新代理地址", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
+        layout.Controls.Add(proxyBox, 1, 4);
+        layout.Controls.Add(new Label { Text = "检查/下载更新时使用，留空为直连，例如 http://127.0.0.1:7897。", AutoSize = true }, 1, 5);
 
         page.Controls.Add(layout);
         return page;
@@ -260,6 +266,7 @@ public sealed class SettingsForm : Form
         working.HotKey = defaults.HotKey;
         working.ShowSuccessNotifications = defaults.ShowSuccessNotifications;
         working.MaxClipboardCharacters = defaults.MaxClipboardCharacters;
+        working.UpdateProxy = defaults.UpdateProxy;
         working.Style = defaults.Style;
         working.UserRules = defaults.UserRules;
 
@@ -267,6 +274,7 @@ public sealed class SettingsForm : Form
         winModifier.Checked = false;
         notifications.Checked = working.ShowSuccessNotifications;
         maxCharacters.Value = working.MaxClipboardCharacters;
+        proxyBox.Text = working.UpdateProxy;
         presets.SelectedIndex = 0;
         styleGrid.SelectedObject = working.Style;
         ruleRows.Clear();
@@ -287,6 +295,7 @@ public sealed class SettingsForm : Form
         working.HotKey = hotKeyBox.Text.Trim();
         working.ShowSuccessNotifications = notifications.Checked;
         working.MaxClipboardCharacters = (int)maxCharacters.Value;
+        working.UpdateProxy = proxyBox.Text.Trim();
         working.UserRules = [];
         foreach (var row in ruleRows)
         {
@@ -326,6 +335,7 @@ public sealed class SettingsForm : Form
         HotKey = source.HotKey,
         ShowSuccessNotifications = source.ShowSuccessNotifications,
         MaxClipboardCharacters = source.MaxClipboardCharacters,
+        UpdateProxy = source.UpdateProxy,
         Style = source.Style.Clone(),
         UserRules = source.UserRules.Select(rule => new TargetRule
         {

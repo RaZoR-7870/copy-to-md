@@ -44,6 +44,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         AddModeItem(menu, "强制 Word", OutputMode.Word);
         AddModeItem(menu, "强制纯文本", OutputMode.PlainText);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("检查更新...", null, (_, _) => CheckForUpdates());
         menu.Items.Add("设置...", null, (_, _) => OpenSettingsDialog());
         menu.Items.Add("打开配置文件", null, (_, _) => OpenSettings());
         menu.Items.Add("退出", null, (_, _) => Shutdown());
@@ -69,6 +70,16 @@ public sealed class TrayApplicationContext : ApplicationContext
         if (!NativeMethods.RegisterHotKey(messageWindow.Handle, HotKeyId, gesture.Modifiers, (uint)gesture.Key))
         {
             throw new InvalidOperationException($"无法注册快捷键 {hotKey}。它可能已被其他程序占用，请在设置中修改。");
+        }
+    }
+
+    private void CheckForUpdates()
+    {
+        var exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "CopyToMd.exe");
+        using var form = new UpdateForm(settings.UpdateProxy, exePath);
+        if (form.ShowDialog() == DialogResult.OK)
+        {
+            Shutdown();
         }
     }
 
