@@ -153,11 +153,18 @@ public sealed partial class RtfImporter
                 richTextBox.Select(lineStart + index, 1);
                 var font = richTextBox.SelectionFont;
                 var script = hasScript ? ReadScriptKind(richTextBox.SelectedRtf) : ScriptKind.None;
+                var color = richTextBox.SelectionColor;
+                var colorHex = color.IsEmpty || color.ToArgb() == Color.Black.ToArgb()
+                    ? null
+                    : $"#{color.R:X2}{color.G:X2}{color.B:X2}";
                 var style = new InlineStyle(
                     font?.Bold == true,
                     font?.Italic == true,
                     font?.Size ?? paragraph.FontSize,
-                    script);
+                    script,
+                    font?.Underline == true,
+                    font?.Strikeout == true,
+                    colorHex);
 
                 paragraph.FontSize = Math.Max(paragraph.FontSize, style.Size);
                 if (currentStyle != style && index > runStart)
@@ -236,7 +243,8 @@ public sealed partial class RtfImporter
         text = text.Replace('\v', '\n');
         if (text.Length > 0)
         {
-            paragraph.Runs.Add(new InlineRun(text, style.Bold, style.Italic, null, style.Script));
+            paragraph.Runs.Add(new InlineRun(text, style.Bold, style.Italic, null, style.Script,
+                style.Underline, style.Strikethrough, style.Color));
         }
     }
 
@@ -257,7 +265,14 @@ public sealed partial class RtfImporter
         return CoverageRegex().Replace(withoutListMarkers, string.Empty);
     }
 
-    private sealed record InlineStyle(bool Bold, bool Italic, float Size, ScriptKind Script = ScriptKind.None);
+    private sealed record InlineStyle(
+        bool Bold,
+        bool Italic,
+        float Size,
+        ScriptKind Script = ScriptKind.None,
+        bool Underline = false,
+        bool Strikethrough = false,
+        string? Color = null);
 
     [GeneratedRegex(@"^[ \t]*[•◦▪·∙](?:\t| +)", RegexOptions.CultureInvariant)]
     private static partial Regex StandardBulletRegex();

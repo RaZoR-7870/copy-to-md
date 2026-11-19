@@ -68,8 +68,12 @@ public sealed partial class PlainTextImporter
         }
     }
 
-    public RichDocument Import(string? text)
+    public RichDocument Import(string? text) => Import(text, null);
+
+    public RichDocument Import(string? text, StyleSettings? style)
     {
+        var cleaning = style?.SuspectBulletCleaning ?? SuspectBulletCleaning.Conservative;
+        var minSuspectLines = cleaning == SuspectBulletCleaning.Aggressive ? 1 : style?.MinSuspectLines ?? 3;
         var document = new RichDocument
         {
             Source = DocumentSource.PlainText,
@@ -101,7 +105,10 @@ public sealed partial class PlainTextImporter
             }
         }
 
-        ConfirmSuspectLists(lines);
+        if (cleaning != SuspectBulletCleaning.Off)
+        {
+            ConfirmSuspectLists(lines, minSuspectLines);
+        }
         var indentLevels = lines
             .Where(line => line.IsConfirmedList)
             .Select(line => line.IndentWidth)
@@ -133,7 +140,7 @@ public sealed partial class PlainTextImporter
         return document;
     }
 
-    private static void ConfirmSuspectLists(IReadOnlyList<ParsedLine> lines)
+    private static void ConfirmSuspectLists(IReadOnlyList<ParsedLine> lines, int minSuspectLines)
     {
         var start = 0;
         while (start < lines.Count)
@@ -165,7 +172,7 @@ public sealed partial class PlainTextImporter
                 }
 
                 var count = index - groupStart;
-                if (count < 3)
+                if (count < minSuspectLines)
                 {
                     // One or two leading letters can be ordinary prose or variable
                     // definitions. Without rich-font evidence, preserve them.

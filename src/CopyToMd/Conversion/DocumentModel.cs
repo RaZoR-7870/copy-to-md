@@ -26,7 +26,10 @@ public sealed record InlineRun(
     bool Bold = false,
     bool Italic = false,
     string? Link = null,
-    ScriptKind Script = ScriptKind.None);
+    ScriptKind Script = ScriptKind.None,
+    bool Underline = false,
+    bool Strikethrough = false,
+    string? Color = null);
 
 public sealed class DocumentBlock
 {
@@ -64,7 +67,8 @@ public sealed class RichDocument
 
     public bool HasSemanticFormatting => Blocks.Any(block =>
         block.Kind is BlockKind.Heading or BlockKind.ListItem ||
-        block.Inlines.Any(run => run.Bold || run.Italic || run.Link is not null || run.Script != ScriptKind.None));
+        block.Inlines.Any(run => run.Bold || run.Italic || run.Link is not null || run.Script != ScriptKind.None ||
+                                 run.Underline || run.Strikethrough || run.Color is not null));
 
     public string PlainText => string.Join(Environment.NewLine, Blocks.Select(block => block.Text));
 }

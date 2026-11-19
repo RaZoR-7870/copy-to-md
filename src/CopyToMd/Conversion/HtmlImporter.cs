@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Text;
 using System.Text.RegularExpressions;
 using AngleSharp.Dom;
@@ -13,7 +14,10 @@ public sealed class HtmlImporter
         bool Italic = false,
         string? Link = null,
         bool SymbolFont = false,
-        ScriptKind Script = ScriptKind.None);
+        ScriptKind Script = ScriptKind.None,
+        bool Underline = false,
+        bool Strikethrough = false,
+        string? Color = null);
 
     private sealed class InlineAccumulator
     {
@@ -65,14 +69,17 @@ public sealed class HtmlImporter
             {
                 var previous = Runs[^1];
                 if (previous.Bold == style.Bold && previous.Italic == style.Italic &&
-                    previous.Link == style.Link && previous.Script == style.Script)
+                    previous.Link == style.Link && previous.Script == style.Script &&
+                    previous.Underline == style.Underline && previous.Strikethrough == style.Strikethrough &&
+                    previous.Color == style.Color)
                 {
                     Runs[^1] = previous with { Text = previous.Text + text };
                     return;
                 }
             }
 
-            Runs.Add(new InlineRun(text, style.Bold, style.Italic, style.Link, style.Script));
+            Runs.Add(new InlineRun(text, style.Bold, style.Italic, style.Link, style.Script,
+                style.Underline, style.Strikethrough, style.Color));
         }
 
         public void AddLineBreak()
@@ -361,6 +368,16 @@ public sealed class HtmlImporter
             current = current with { Script = ScriptKind.Superscript };
         }
 
+        if (element.TagName is "U" or "INS")
+        {
+            current = current with { Underline = true };
+        }
+
+        if (element.TagName is "S" or "STRIKE" or "DEL")
+        {
+            current = current with { Strikethrough = true };
+        }
+
         var css = element.GetAttribute("style") ?? string.Empty;
         if (Regex.IsMatch(css, @"font-weight\s*:\s*(?:bold|[6-9]00)", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)))
         {
@@ -385,6 +402,21 @@ public sealed class HtmlImporter
             };
         }
 
+        if (Regex.IsMatch(css, @"text-decoration(?:-line)?\s*:[^;]*underline", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)))
+        {
+            current = current with { Underline = true };
+        }
+
+        if (Regex.IsMatch(css, @"text-decoration(?:-line)?\s*:[^;]*line-through", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)))
+        {
+            current = current with { Strikethrough = true };
+        }
+
+        if (ParseColor(css) is { } color)
+        {
+            current = current with { Color = color };
+        }
+
         if (Regex.IsMatch(css, @"font-family\s*:\s*[^;]*(?:Wingdings|Webdings|Symbol)", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)))
         {
             current = current with { SymbolFont = true };
@@ -405,6 +437,26 @@ public sealed class HtmlImporter
         foreach (var child in element.ChildNodes)
         {
             ReadInline(child, current, accumulator);
+        }
+    }
+
+    private static string? ParseColor(string css)
+    {
+        var match = Regex.Match(css, @"(?:^|;)\s*color\s*:\s*([^;]+)", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var value = match.Groups[1].Value.Trim();
+        try
+        {
+            var color = ColorTranslator.FromHtml(value);
+            return color.IsEmpty ? null : $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException or OverflowException)
+        {
+            return null;
         }
     }
 

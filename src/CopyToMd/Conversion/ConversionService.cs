@@ -7,9 +7,18 @@ public sealed class ConversionService
     private readonly HtmlImporter htmlImporter = new();
     private readonly RtfImporter rtfImporter = new();
     private readonly PlainTextImporter plainTextImporter = new();
-    private readonly MarkdownRenderer markdownRenderer = new();
-    private readonly PlainTextRenderer plainTextRenderer = new();
-    private readonly WordRenderer wordRenderer = new();
+    private readonly StyleSettings style;
+    private readonly MarkdownRenderer markdownRenderer;
+    private readonly PlainTextRenderer plainTextRenderer;
+    private readonly WordRenderer wordRenderer;
+
+    public ConversionService(StyleSettings? style = null)
+    {
+        this.style = style ?? new StyleSettings();
+        markdownRenderer = new MarkdownRenderer(this.style);
+        plainTextRenderer = new PlainTextRenderer(this.style);
+        wordRenderer = new WordRenderer(this.style);
+    }
 
     public ConversionResult Convert(string? html, string? rtf, string? unicodeText, OutputMode mode)
     {
@@ -18,7 +27,8 @@ public sealed class ConversionService
             throw new ArgumentException("转换前必须确定输出模式。", nameof(mode));
         }
 
-        var plainDocument = plainTextImporter.Import(unicodeText);
+        style.Normalize();
+        var plainDocument = plainTextImporter.Import(unicodeText, style);
         htmlImporter.TryImport(html, out var htmlDocument);
 
         RichDocument? document = htmlDocument?.HasSemanticFormatting == true ? htmlDocument : null;
@@ -37,6 +47,8 @@ public sealed class ConversionService
                 document.Warnings.Add("富文本不可用或不可信，已使用保守纯文本清理。");
             }
         }
+
+        DocumentStyler.Apply(document, style);
 
         return mode switch
         {

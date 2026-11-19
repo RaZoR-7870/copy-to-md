@@ -1,3 +1,4 @@
+using CopyToMd.Configuration;
 using CopyToMd.Conversion;
 using CopyToMd.Target;
 
@@ -10,8 +11,8 @@ public sealed class SmartPasteCoordinator
     private readonly IClipboardService clipboardService;
     private readonly IForegroundWindowService foregroundWindowService;
     private readonly IPasteService pasteService;
-    private readonly ConversionService conversionService;
-    private readonly TargetResolver targetResolver;
+    private ConversionService conversionService;
+    private TargetResolver targetResolver;
     private int running;
 
     public SmartPasteCoordinator(
@@ -31,6 +32,13 @@ public sealed class SmartPasteCoordinator
     public int MaxClipboardCharacters { get; set; } = 500_000;
     public OutputMode OverrideMode { get; set; } = OutputMode.Auto;
     public event Action<SmartPasteStatus>? StatusChanged;
+
+    public void ApplySettings(AppSettings settings)
+    {
+        MaxClipboardCharacters = settings.MaxClipboardCharacters;
+        conversionService = new ConversionService(settings.Style);
+        targetResolver = new TargetResolver(settings.UserRules);
+    }
 
     public void Execute()
     {

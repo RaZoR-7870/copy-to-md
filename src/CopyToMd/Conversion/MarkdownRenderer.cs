@@ -4,6 +4,14 @@ namespace CopyToMd.Conversion;
 
 public sealed class MarkdownRenderer
 {
+    private readonly StyleSettings style;
+
+    public MarkdownRenderer(StyleSettings? style = null)
+    {
+        this.style = style ?? new StyleSettings();
+        this.style.Normalize();
+    }
+
     public string Render(RichDocument document)
     {
         var blocks = document.Blocks.Where(block => block.Text.Length > 0).ToList();
@@ -14,9 +22,9 @@ public sealed class MarkdownRenderer
         {
             if (previous is not null)
             {
-                output.Append(previous.Kind == BlockKind.ListItem && block.Kind == BlockKind.ListItem
-                    ? document.NewLine
-                    : document.NewLine + document.NewLine);
+                var tight = style.ParagraphSpacing == ParagraphSpacing.SingleNewline ||
+                            (previous.Kind == BlockKind.ListItem && block.Kind == BlockKind.ListItem);
+                output.Append(tight ? document.NewLine : document.NewLine + document.NewLine);
             }
 
             switch (block.Kind)
@@ -25,26 +33,48 @@ public sealed class MarkdownRenderer
                     output.Append('#', Math.Clamp(block.HeadingLevel, 1, 6)).Append(' ');
                     break;
                 case BlockKind.ListItem:
-                    output.Append(' ', Math.Max(0, block.Level) * 2);
-                    output.Append(block.ListKind == ListKind.Ordered
-                        ? $"{Math.Max(1, block.Number)}. "
-                        : "- ");
+                    output.Append(' ', Math.Max(0, block.Level) * style.ListIndentSpaces);
+                    if (block.ListKind == ListKind.Ordered)
+                    {
+                        output.Append(Math.Max(1, block.Number)).Append(". ");
+                    }
+                    else
+                    {
+                        output.Append(style.BulletMarker switch
+                        {
+                            BulletMarker.Asterisk => "* ",
+                            BulletMarker.Plus => "+ ",
+                            _ => "- "
+                        });
+                    }
+
                     break;
             }
 
-            output.Append(RenderInlines(block.Inlines, block.Kind == BlockKind.Heading));
+            output.Append(RenderInlines(block.Inlines, block.Kind == BlockKind.Heading, style));
             previous = block;
         }
 
         return output.ToString();
     }
 
-    private static string RenderInlines(IEnumerable<InlineRun> runs, bool suppressBold = false)
+    private static string RenderInlines(IEnumerable<InlineRun> runs, bool suppressBold, StyleSettings style)
     {
         var normalized = InlineScriptNormalizer.Normalize(runs);
         if (suppressBold)
         {
             normalized = normalized.Select(run => run with { Bold = false }).ToList();
+        }
+
+        if (style.MarkdownScriptMode != MarkdownScriptMode.LaTeX)
+        {
+            var simple = new StringBuilder();
+            foreach (var run in normalized)
+            {
+                simple.Append(RenderRun(run, style));
+            }
+
+            return simple.ToString();
         }
 
         var output = new StringBuilder();
@@ -60,7 +90,7 @@ public sealed class MarkdownRenderer
                     output.Append(leading);
                     if (prefix.Length > 0)
                     {
-                        output.Append(RenderRun(run with { Text = prefix }));
+                        output.Append(RenderRun(run with { Text = prefix }, style));
                     }
 
                     var math = new StringBuilder("$").Append(EscapeLatex(baseToken));
@@ -99,13 +129,13 @@ public sealed class MarkdownRenderer
                     output.Append(trailing);
                     if (remainderSource is not null)
                     {
-                        output.Append(RenderRun(remainderSource with { Text = remainderText! }));
+                        output.Append(RenderRun(remainderSource with { Text = remainderText! }, style));
                     }
 
                     continue;
                 }
 
-                output.Append(RenderRun(run));
+                output.Append(RenderRun(run, style));
                 index++;
                 continue;
             }
@@ -205,7 +235,7 @@ public sealed class MarkdownRenderer
         return output.ToString();
     }
 
-    private static string RenderRun(InlineRun run)
+    private static string RenderRun(InlineRun run, StyleSettings style)
     {
         var escaped = Escape(run.Text);
         var leadingLength = escaped.Length - escaped.TrimStart().Length;
@@ -220,26 +250,53 @@ public sealed class MarkdownRenderer
             return escaped;
         }
 
-        if (run.Bold && run.Italic)
+        if (run.Script != ScriptKind.None && style.MarkdownScriptMode != MarkdownScriptMode.LaTeX)
+        {
+            core = style.MarkdownScriptMode == MarkdownScriptMode.Html
+                ? $"<{(run.Script == ScriptKind.Superscript ? "sup" : "sub")}>{core}</{(run.Script == ScriptKind.Superscript ? "sup" : "sub")}>"
+                : Escape(InlineScriptNormalizer.ToUnicode(run.Text, run.Script));
+        }
+
+        var bold = style.KeepBold && run.Bold;
+        var italic = style.KeepItalic && run.Italic;
+        if (bold && italic)
         {
             core = $"***{core}***";
         }
-        else if (run.Bold)
+        else if (bold)
         {
             core = $"**{core}**";
         }
-        else if (run.Italic)
+        else if (italic)
         {
             core = $"*{core}*";
         }
 
-        if (SafeLink(run.Link) is { } link)
+        if (style.KeepStrikethrough && run.Strikethrough)
+        {
+            core = $"~~{core}~~";
+        }
+
+        if (style.KeepUnderline && run.Underline && style.MarkdownAllowHtml)
+        {
+            core = $"<u>{core}</u>";
+        }
+
+        if (style.KeepColor && run.Color is { } color && style.MarkdownAllowHtml && IsHexColor(color))
+        {
+            core = $"<span style=\"color:{color}\">{core}</span>";
+        }
+
+        if (style.LinkMode == LinkMode.Keep && SafeLink(run.Link) is { } link)
         {
             core = $"[{core}]({link})";
         }
 
         return leading + core + trailing;
     }
+
+    private static bool IsHexColor(string value) =>
+        value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
 
     internal static string Escape(string text)
     {

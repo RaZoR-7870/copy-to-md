@@ -12,7 +12,7 @@ namespace CopyToMd.App;
 public sealed class TrayApplicationContext : ApplicationContext
 {
     private const int HotKeyId = 1;
-    private readonly AppSettings settings;
+    private AppSettings settings;
     private readonly string settingsPath;
     private readonly SmartPasteCoordinator coordinator;
     private readonly NotifyIcon notifyIcon;
@@ -44,7 +44,8 @@ public sealed class TrayApplicationContext : ApplicationContext
         AddModeItem(menu, "强制 Word", OutputMode.Word);
         AddModeItem(menu, "强制纯文本", OutputMode.PlainText);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("打开配置", null, (_, _) => OpenSettings());
+        menu.Items.Add("设置...", null, (_, _) => OpenSettingsDialog());
+        menu.Items.Add("打开配置文件", null, (_, _) => OpenSettings());
         menu.Items.Add("退出", null, (_, _) => Shutdown());
 
         notifyIcon = new NotifyIcon
@@ -59,10 +60,61 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         messageWindow = new HotKeyMessageWindow(() => coordinator.Execute());
         _ = messageWindow.Handle;
-        var gesture = HotKeyGesture.Parse(settings.HotKey);
+        RegisterHotKeyOrThrow(settings.HotKey);
+    }
+
+    private void RegisterHotKeyOrThrow(string hotKey)
+    {
+        var gesture = HotKeyGesture.Parse(hotKey);
         if (!NativeMethods.RegisterHotKey(messageWindow.Handle, HotKeyId, gesture.Modifiers, (uint)gesture.Key))
         {
-            throw new InvalidOperationException($"无法注册快捷键 {settings.HotKey}。它可能已被其他程序占用，请修改 appsettings.json。");
+            throw new InvalidOperationException($"无法注册快捷键 {hotKey}。它可能已被其他程序占用，请在设置中修改。");
+        }
+    }
+
+    private void OpenSettingsDialog()
+    {
+        using var form = new SettingsForm(settings);
+        if (form.ShowDialog() != DialogResult.OK)
+        {
+            return;
+        }
+
+        var updated = form.Result;
+        var previousHotKey = settings.HotKey;
+        NativeMethods.UnregisterHotKey(messageWindow.Handle, HotKeyId);
+        try
+        {
+            RegisterHotKeyOrThrow(updated.HotKey);
+        }
+        catch (Exception exception) when (exception is FormatException or InvalidOperationException)
+        {
+            try
+            {
+                RegisterHotKeyOrThrow(previousHotKey);
+            }
+            catch (Exception rollbackException) when (rollbackException is FormatException or InvalidOperationException)
+            {
+                MessageBox.Show($"新快捷键注册失败，且原快捷键也无法恢复：{rollbackException.Message}", "Copy to MD", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            MessageBox.Show(exception.Message, "快捷键未更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        settings = updated;
+        coordinator.ApplySettings(settings);
+        notifyIcon.Text = $"Copy to MD - {settings.HotKey}";
+        statusItem.Text = "最近状态：设置已更新";
+
+        try
+        {
+            settings.Save(settingsPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show($"设置已生效，但写入配置文件失败：{exception.Message}", "Copy to MD", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 

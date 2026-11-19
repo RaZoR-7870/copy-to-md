@@ -4,10 +4,41 @@ namespace CopyToMd.Conversion;
 
 public sealed class WordRenderer
 {
+    private readonly StyleSettings style;
+
+    public WordRenderer(StyleSettings? style = null)
+    {
+        this.style = style ?? new StyleSettings();
+        this.style.Normalize();
+    }
+
     public string RenderRtf(RichDocument document)
     {
+        var colors = new List<string>();
+        if (style.KeepColor)
+        {
+            colors = document.Blocks.SelectMany(block => block.Inlines)
+                .Select(run => run.Color)
+                .Where(color => color is not null && TryParseColor(color, out _, out _, out _))
+                .Distinct()
+                .ToList()!;
+        }
+
         var output = new StringBuilder();
-        output.Append(@"{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset0 Calibri;}}\viewkind4\uc1");
+        output.Append(@"{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset0 Calibri;}}");
+        if (colors.Count > 0)
+        {
+            output.Append(@"{\colortbl ;");
+            foreach (var color in colors)
+            {
+                TryParseColor(color, out var red, out var green, out var blue);
+                output.Append(@"\red").Append(red).Append(@"\green").Append(green).Append(@"\blue").Append(blue).Append(';');
+            }
+
+            output.Append('}');
+        }
+
+        output.Append(@"\viewkind4\uc1");
 
         foreach (var block in document.Blocks)
         {
@@ -17,7 +48,7 @@ public sealed class WordRenderer
                     var level = Math.Clamp(block.HeadingLevel, 1, 6);
                     var fontSize = Math.Max(28, 48 - ((level - 1) * 4));
                     output.Append(@"\pard\sb240\sa120\f0\fs").Append(fontSize).Append(@"\b ");
-                    AppendRuns(output, block.Inlines);
+                    AppendRuns(output, block.Inlines, colors);
                     output.Append(@"\b0\par");
                     break;
                 case BlockKind.ListItem:
@@ -33,62 +64,128 @@ public sealed class WordRenderer
                         output.Append(@"\tab ");
                     }
 
-                    AppendRuns(output, block.Inlines);
+                    AppendRuns(output, block.Inlines, colors);
                     output.Append(@"\par");
                     break;
                 default:
                     output.Append(@"\pard\sa120\f0\fs22 ");
-                    AppendRuns(output, block.Inlines);
+                    AppendRuns(output, block.Inlines, colors);
                     output.Append(@"\par");
                     break;
-                }
+            }
         }
 
         output.Append('}');
         return output.ToString();
     }
 
-    private static void AppendRuns(StringBuilder output, IEnumerable<InlineRun> runs)
+    private void AppendRuns(StringBuilder output, IEnumerable<InlineRun> runs, List<string> colors)
     {
-        foreach (var run in InlineScriptNormalizer.Normalize(runs))
+        foreach (var rawRun in InlineScriptNormalizer.Normalize(runs))
         {
-            if (run.Bold)
+            var run = rawRun;
+            var text = run.Text;
+            var script = run.Script;
+            if (script != ScriptKind.None && style.WordScriptMode == WordScriptMode.Unicode)
+            {
+                text = InlineScriptNormalizer.ToUnicode(text, script);
+                script = ScriptKind.None;
+            }
+
+            var bold = style.KeepBold && run.Bold;
+            var italic = style.KeepItalic && run.Italic;
+            var underline = style.KeepUnderline && run.Underline;
+            var strike = style.KeepStrikethrough && run.Strikethrough;
+            var colorIndex = style.KeepColor && run.Color is not null ? colors.IndexOf(run.Color) + 1 : 0;
+
+            if (colorIndex > 0)
+            {
+                output.Append(@"\cf").Append(colorIndex).Append(' ');
+            }
+
+            if (bold)
             {
                 output.Append(@"\b ");
             }
 
-            if (run.Italic)
+            if (italic)
             {
                 output.Append(@"\i ");
             }
 
-            if (run.Script == ScriptKind.Superscript)
+            if (underline)
+            {
+                output.Append(@"\ul ");
+            }
+
+            if (strike)
+            {
+                output.Append(@"\strike ");
+            }
+
+            if (script == ScriptKind.Superscript)
             {
                 output.Append(@"\super ");
             }
-            else if (run.Script == ScriptKind.Subscript)
+            else if (script == ScriptKind.Subscript)
             {
                 output.Append(@"\sub ");
             }
 
             // RichTextBox and Word disagree on some HYPERLINK field forms. Keep the
             // display text rather than risking field instructions appearing in the document.
-            AppendRtfText(output, run.Text);
+            AppendRtfText(output, text);
 
-            if (run.Script != ScriptKind.None)
+            if (script != ScriptKind.None)
             {
                 output.Append(@"\nosupersub ");
             }
 
-            if (run.Italic)
+            if (strike)
+            {
+                output.Append(@"\strike0 ");
+            }
+
+            if (underline)
+            {
+                output.Append(@"\ulnone ");
+            }
+
+            if (italic)
             {
                 output.Append(@"\i0 ");
             }
 
-            if (run.Bold)
+            if (bold)
             {
                 output.Append(@"\b0 ");
             }
+
+            if (colorIndex > 0)
+            {
+                output.Append(@"\cf0 ");
+            }
+        }
+    }
+
+    private static bool TryParseColor(string? value, out int red, out int green, out int blue)
+    {
+        red = green = blue = 0;
+        if (value is null || value.Length != 7 || value[0] != '#')
+        {
+            return false;
+        }
+
+        try
+        {
+            red = Convert.ToInt32(value[1..3], 16);
+            green = Convert.ToInt32(value[3..5], 16);
+            blue = Convert.ToInt32(value[5..7], 16);
+            return true;
+        }
+        catch (Exception exception) when (exception is FormatException or OverflowException)
+        {
+            return false;
         }
     }
 
