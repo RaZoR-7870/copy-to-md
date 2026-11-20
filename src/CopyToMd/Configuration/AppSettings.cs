@@ -6,6 +6,9 @@ namespace CopyToMd.Configuration;
 
 public sealed class AppSettings
 {
+    public const int CurrentConfigVersion = 2;
+
+    public int ConfigVersion { get; set; }
     public string HotKey { get; set; } = "Ctrl+Alt+Shift+V";
     public bool ShowSuccessNotifications { get; set; }
     public int MaxClipboardCharacters { get; set; } = 500_000;
@@ -31,6 +34,15 @@ public sealed class AppSettings
         settings.MaxClipboardCharacters = Math.Clamp(settings.MaxClipboardCharacters, 1_000, 5_000_000);
         settings.UpdateProxy = settings.UpdateProxy?.Trim() ?? string.Empty;
         settings.Style ??= new StyleSettings();
+        if (settings.ConfigVersion < CurrentConfigVersion)
+        {
+            // Older installs saved blank-line spacing and kept soft breaks; migrate once
+            // so updated machines get the compact output and joined auto-wraps.
+            settings.Style.ParagraphSpacing = ParagraphSpacing.SingleNewline;
+            settings.Style.SoftBreakMode = SoftBreakMode.Join;
+            settings.ConfigVersion = CurrentConfigVersion;
+        }
+
         settings.Style.Normalize();
         settings.UserRules = settings.UserRules?.Where(rule => rule is not null).ToList() ?? [];
         foreach (var rule in settings.UserRules)
@@ -61,6 +73,7 @@ public sealed class AppSettings
     {
         Style ??= new StyleSettings();
         Style.Normalize();
+        ConfigVersion = CurrentConfigVersion;
         File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
     }
 }

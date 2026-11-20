@@ -91,7 +91,7 @@ public sealed class SettingsForm : Form
         proxyBox.Text = working.UpdateProxy;
         layout.Controls.Add(new Label { Text = "更新代理地址", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
         layout.Controls.Add(proxyBox, 1, 4);
-        layout.Controls.Add(new Label { Text = "检查/下载更新时使用，留空为直连，例如 http://127.0.0.1:7897。", AutoSize = true }, 1, 5);
+        layout.Controls.Add(new Label { Text = "检查/下载更新时使用，留空跟随系统代理，例如 http://127.0.0.1:7897。", AutoSize = true }, 1, 5);
 
         page.Controls.Add(layout);
         return page;

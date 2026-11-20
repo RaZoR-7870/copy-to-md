@@ -49,7 +49,8 @@ public static class UpdateService
 
         if (string.IsNullOrWhiteSpace(proxy))
         {
-            handler.UseProxy = false;
+            // Follow the system proxy (e.g. Clash system-proxy mode); direct when none.
+            handler.UseProxy = true;
         }
         else
         {
@@ -67,7 +68,7 @@ public static class UpdateService
     public static async Task<UpdateCheckResult> CheckAsync(string? proxy, CancellationToken cancellationToken = default)
     {
         using var client = CreateClient(proxy);
-        using var response = await client.GetAsync(LatestReleaseApi, cancellationToken);
+        using var response = await SendWithRetryAsync(client, LatestReleaseApi, HttpCompletionOption.ResponseContentRead, proxy, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw await BuildHttpErrorAsync(response, cancellationToken);
@@ -115,7 +116,7 @@ public static class UpdateService
         CancellationToken cancellationToken = default)
     {
         using var client = CreateClient(proxy, TimeSpan.FromMinutes(10));
-        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await SendWithRetryAsync(client, url, HttpCompletionOption.ResponseHeadersRead, proxy, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw await BuildHttpErrorAsync(response, cancellationToken);
@@ -165,6 +166,36 @@ public static class UpdateService
             UseShellExecute = false,
             CreateNoWindow = true
         });
+    }
+
+    private static async Task<HttpResponseMessage> SendWithRetryAsync(
+        HttpClient client, string url, HttpCompletionOption option, string? proxy, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await client.GetAsync(url, option, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            // Transient proxy/TLS failures are common; retry once before giving up.
+        }
+
+        try
+        {
+            return await client.GetAsync(url, option, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            throw ConnectionFailure(exception, proxy);
+        }
+    }
+
+    private static InvalidOperationException ConnectionFailure(HttpRequestException exception, string? proxy)
+    {
+        var route = string.IsNullOrWhiteSpace(proxy) ? "系统代理/直连" : $"代理 {proxy.Trim()}";
+        var detail = exception.InnerException?.Message ?? exception.Message;
+        return new InvalidOperationException(
+            $"无法连接 GitHub（{route}）：{detail}。请确认代理软件已启动、地址端口正确；也可用浏览器下载 Release 压缩包后手动覆盖 exe。");
     }
 
     private static async Task<InvalidOperationException> BuildHttpErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
