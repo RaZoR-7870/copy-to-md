@@ -48,6 +48,75 @@ internal static partial class NativeMethods
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool OpenClipboard(nint hWndNewOwner);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool CloseClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern nint GetClipboardData(uint uFormat);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint RegisterClipboardFormat(string lpszFormat);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern nint GlobalLock(nint hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GlobalUnlock(nint hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern nuint GlobalSize(nint hMem);
+
+    public static byte[]? ReadClipboardFormatBytes(string format)
+    {
+        var formatId = RegisterClipboardFormat(format);
+        if (formatId == 0 || !OpenClipboard(0))
+        {
+            return null;
+        }
+
+        try
+        {
+            var handle = GetClipboardData(formatId);
+            if (handle == 0)
+            {
+                return null;
+            }
+
+            var size = GlobalSize(handle);
+            if (size == 0)
+            {
+                return null;
+            }
+
+            var pointer = GlobalLock(handle);
+            if (pointer == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                var bytes = new byte[(int)size];
+                Marshal.Copy(pointer, bytes, 0, bytes.Length);
+                return bytes;
+            }
+            finally
+            {
+                GlobalUnlock(handle);
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 

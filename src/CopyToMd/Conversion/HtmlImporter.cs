@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using AngleSharp.Dom;
@@ -14,6 +15,7 @@ public sealed class HtmlImporter
         bool Italic = false,
         string? Link = null,
         bool SymbolFont = false,
+        bool BulletMarker = false,
         ScriptKind Script = ScriptKind.None,
         bool Underline = false,
         bool Strikethrough = false,
@@ -135,6 +137,8 @@ public sealed class HtmlImporter
             var parsed = new HtmlParser().ParseDocument(fragment);
             var result = new RichDocument { Source = DocumentSource.Html };
             ProcessContainer(parsed.Body ?? parsed.DocumentElement, result);
+            NormalizeFlatListLevels(result);
+            NormalizeHeadings(result);
             if (result.Blocks.Count == 0)
             {
                 return false;
@@ -203,6 +207,13 @@ public sealed class HtmlImporter
                 continue;
             }
 
+            if (tag == "TABLE")
+            {
+                FlushInlineBuffer();
+                ProcessTable(element, document);
+                continue;
+            }
+
             if (IsBlockElement(tag))
             {
                 FlushInlineBuffer();
@@ -220,7 +231,9 @@ public sealed class HtmlImporter
                     var runs = accumulator.Finish();
                     if (runs.Count > 0)
                     {
-                        AddBlock(document, BlockKind.Paragraph, runs, accumulator.FoundSymbolBullet);
+                        var block = AddBlock(document, BlockKind.Paragraph, runs, accumulator.FoundSymbolBullet);
+                        block.IndentHint = ParseMarginLeft(element);
+                        block.FontSizeHint = ParseMaxFontSize(element);
                     }
                 }
 
@@ -269,6 +282,7 @@ public sealed class HtmlImporter
             block.ListKind = kind;
             block.Level = level;
             block.Number = number;
+            block.FontSizeHint = ParseMaxFontSize(item);
         }
 
         foreach (var nested in FindNestedLists(item))
@@ -298,6 +312,177 @@ public sealed class HtmlImporter
     private static int PositiveNumber(string? value, int fallback) =>
         int.TryParse(value, out var number) && number > 0 ? number : fallback;
 
+    private static void NormalizeFlatListLevels(RichDocument document)
+    {
+        // PowerPoint emits flat <div>/<p> bullets distinguished only by margin-left,
+        // not nested <ul>. Recover nesting from the distinct indent values.
+        var levels = document.Blocks
+            .Where(block => block.Kind == BlockKind.ListItem && block.IndentHint.HasValue)
+            .Select(block => Math.Round(block.IndentHint!.Value, 3))
+            .Distinct()
+            .OrderBy(indent => indent)
+            .ToList();
+        if (levels.Count < 2)
+        {
+            return;
+        }
+
+        foreach (var block in document.Blocks)
+        {
+            if (block.Kind == BlockKind.ListItem && block.IndentHint.HasValue)
+            {
+                block.Level = Math.Max(0, levels.IndexOf(Math.Round(block.IndentHint.Value, 3)));
+            }
+        }
+    }
+
+    private static double? ParseMarginLeft(IElement element)
+    {
+        var css = element.GetAttribute("style");
+        if (string.IsNullOrEmpty(css))
+        {
+            return null;
+        }
+
+        var match = MarginLeftRegex().Match(css);
+        if (!match.Success ||
+            !double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            return null;
+        }
+
+        var inches = match.Groups[2].Value.ToLowerInvariant() switch
+        {
+            "pt" => value / 72.0,
+            "px" => value / 96.0,
+            "cm" => value / 2.54,
+            "mm" => value / 25.4,
+            _ => value
+        };
+        return Math.Max(0, inches);
+    }
+
+    private static Regex MarginLeftRegex() =>
+        new(@"margin-left\s*:\s*(-?[0-9.]+)\s*(in|pt|px|cm|mm)?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    private static void ProcessTable(IElement table, RichDocument document)
+    {
+        var rows = new List<TableRow>();
+        foreach (var tr in table.QuerySelectorAll("tr"))
+        {
+            // Ignore rows belonging to a nested table.
+            var nested = false;
+            for (var parent = tr.ParentElement; parent is not null && !ReferenceEquals(parent, table); parent = parent.ParentElement)
+            {
+                if (parent.TagName == "TABLE")
+                {
+                    nested = true;
+                    break;
+                }
+            }
+
+            if (nested)
+            {
+                continue;
+            }
+
+            var row = new TableRow();
+            foreach (var cell in tr.Children.Where(child => child.TagName is "TD" or "TH"))
+            {
+                var tableCell = new TableCell();
+                tableCell.Inlines.AddRange(ReadBlockInline(cell).Finish());
+                row.Cells.Add(tableCell);
+            }
+
+            if (row.Cells.Count > 0)
+            {
+                rows.Add(row);
+            }
+        }
+
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        var width = rows.Max(row => row.Cells.Count);
+        foreach (var row in rows)
+        {
+            while (row.Cells.Count < width)
+            {
+                row.Cells.Add(new TableCell());
+            }
+        }
+
+        document.Blocks.Add(new DocumentBlock { Kind = BlockKind.Table, Table = rows });
+    }
+
+    private static double? ParseMaxFontSize(IElement element)
+    {
+        double? max = null;
+        foreach (Match match in FontSizeRegex().Matches(element.InnerHtml))
+        {
+            if (double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) &&
+                value > 0 && (max is null || value > max))
+            {
+                max = value;
+            }
+        }
+
+        return max;
+    }
+
+    private static Regex FontSizeRegex() =>
+        new(@"font-size\s*:\s*([0-9.]+)\s*pt", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    private static void NormalizeHeadings(RichDocument document)
+    {
+        // PPT section headings are larger-font paragraphs. Detect them relative to the
+        // body font size (estimated from paragraphs AND bullets), conservatively
+        // excluding long sentences.
+        var sized = document.Blocks
+            .Where(block => block.Kind is BlockKind.Paragraph or BlockKind.ListItem && block.FontSizeHint.HasValue)
+            .ToList();
+        if (sized.Count < 2)
+        {
+            return;
+        }
+
+        var bodySize = sized
+            .GroupBy(block => Math.Round(block.FontSizeHint!.Value, 1))
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key)
+            .First().Key;
+
+        var candidates = sized
+            .Where(block => block.Kind == BlockKind.Paragraph &&
+                            block.FontSizeHint!.Value > bodySize + 0.5 && IsHeadingText(block.Text))
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        var sizes = candidates
+            .Select(block => Math.Round(block.FontSizeHint!.Value, 1))
+            .Distinct()
+            .OrderByDescending(size => size)
+            .ToList();
+        foreach (var block in candidates)
+        {
+            block.Kind = BlockKind.Heading;
+            block.HeadingLevel = Math.Clamp(sizes.IndexOf(Math.Round(block.FontSizeHint!.Value, 1)) + 1, 1, 6);
+        }
+    }
+
+    private static bool IsHeadingText(string text)
+    {
+        var trimmed = text.Trim();
+        return trimmed.Length is > 0 and <= 80 &&
+               !trimmed.Contains('\n') &&
+               trimmed[^1] is not ('.' or '。' or '!' or '！' or '?' or '？' or ';' or '；' or ',' or '，');
+    }
+
     private static DocumentBlock AddBlock(RichDocument document, BlockKind kind, List<InlineRun> runs, bool symbolBullet)
     {
         var block = new DocumentBlock
@@ -326,7 +511,7 @@ public sealed class HtmlImporter
         if (node.NodeType == NodeType.Text)
         {
             var text = node.TextContent;
-            if (style.SymbolFont && accumulator.AtStart && IsSymbolBullet(text))
+            if (accumulator.AtStart && IsBulletGlyph(style, text))
             {
                 accumulator.MarkSymbolBullet();
                 return;
@@ -422,12 +607,17 @@ public sealed class HtmlImporter
             current = current with { SymbolFont = true };
         }
 
+        if (Regex.IsMatch(css, @"mso-special-format\s*:\s*bullet", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)))
+        {
+            current = current with { BulletMarker = true };
+        }
+
         if (element.TagName == "A")
         {
             current = current with { Link = MarkdownRenderer.SafeLink(element.GetAttribute("href")) ?? current.Link };
         }
 
-        if (current.SymbolFont && accumulator.AtStart && IsSymbolBullet(element.TextContent) &&
+        if (accumulator.AtStart && IsBulletGlyph(current, element.TextContent) &&
             !element.ChildNodes.Any(child => child is IElement))
         {
             accumulator.MarkSymbolBullet();
@@ -464,6 +654,24 @@ public sealed class HtmlImporter
     {
         var trimmed = text?.Trim();
         return trimmed is "l" or "m" or "n" or "•" or "◦" or "▪" or "·";
+    }
+
+    private static bool IsBulletGlyph(InlineStyle style, string? text)
+    {
+        var trimmed = text?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return false;
+        }
+
+        // PPT marks real bullets with mso-special-format:bullet regardless of the glyph
+        // character (Wingdings l/n, literal "-", "§", etc.).
+        if (style.BulletMarker && trimmed.Length <= 3)
+        {
+            return true;
+        }
+
+        return style.SymbolFont && IsSymbolBullet(text);
     }
 
     private static bool HasBlockChildren(IElement element) =>

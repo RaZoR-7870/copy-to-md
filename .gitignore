@@ -3,6 +3,7 @@ obj/
 .vs/
 TestResults/
 artifacts/
+diagnostics/
 *.user
 *.suo
 *.log

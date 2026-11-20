@@ -11,7 +11,8 @@ public enum BlockKind
 {
     Paragraph,
     Heading,
-    ListItem
+    ListItem,
+    Table
 }
 
 public enum ListKind
@@ -31,6 +32,17 @@ public sealed record InlineRun(
     bool Strikethrough = false,
     string? Color = null);
 
+public sealed class TableCell
+{
+    public List<InlineRun> Inlines { get; } = [];
+    public string Text => string.Concat(Inlines.Select(run => run.Text));
+}
+
+public sealed class TableRow
+{
+    public List<TableCell> Cells { get; } = [];
+}
+
 public sealed class DocumentBlock
 {
     public BlockKind Kind { get; set; } = BlockKind.Paragraph;
@@ -38,9 +50,14 @@ public sealed class DocumentBlock
     public ListKind ListKind { get; set; } = ListKind.None;
     public int Level { get; set; }
     public int Number { get; set; } = 1;
+    public double? IndentHint { get; set; }
+    public double? FontSizeHint { get; set; }
+    public List<TableRow>? Table { get; set; }
     public List<InlineRun> Inlines { get; } = [];
 
-    public string Text => string.Concat(Inlines.Select(run => run.Text));
+    public string Text => Kind == BlockKind.Table && Table is not null
+        ? string.Join("\n", Table.Select(row => string.Join("\t", row.Cells.Select(cell => cell.Text))))
+        : string.Concat(Inlines.Select(run => run.Text));
 
     public static DocumentBlock FromText(string text) =>
         Create(BlockKind.Paragraph, text);
@@ -66,7 +83,7 @@ public sealed class RichDocument
     public string NewLine { get; set; } = "\n";
 
     public bool HasSemanticFormatting => Blocks.Any(block =>
-        block.Kind is BlockKind.Heading or BlockKind.ListItem ||
+        block.Kind is BlockKind.Heading or BlockKind.ListItem or BlockKind.Table ||
         block.Inlines.Any(run => run.Bold || run.Italic || run.Link is not null || run.Script != ScriptKind.None ||
                                  run.Underline || run.Strikethrough || run.Color is not null));
 

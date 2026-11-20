@@ -48,6 +48,12 @@ public enum ParagraphSpacing
     SingleNewline
 }
 
+public enum SoftBreakMode
+{
+    Join,
+    Keep
+}
+
 public enum MarkdownScriptMode
 {
     LaTeX,
@@ -162,6 +168,11 @@ public sealed class StyleSettings
     [Description("开启后输出中不包含空段落。")]
     public bool RemoveEmptyBlocks { get; set; }
 
+    [Category("2. 段落与列表")]
+    [DisplayName("软换行处理")]
+    [Description("Join 把段落内的自动折行/软换行（PPT 的 br、RTF 的 \\v）合并为一个空格，恢复完整句子；Keep 保留换行。")]
+    public SoftBreakMode SoftBreakMode { get; set; } = SoftBreakMode.Join;
+
     [Category("3. 上下标")]
     [DisplayName("Markdown 上下标")]
     [Description("LaTeX 输出 $x^{2}$；Unicode 输出 x²；Html 输出 <sup>；Plain 尽量 Unicode。")]
@@ -220,7 +231,8 @@ public sealed class StyleSettings
         KeepStrikethrough = true,
         KeepColor = true,
         LinkMode = LinkMode.Keep,
-        MarkdownAllowHtml = true
+        MarkdownAllowHtml = true,
+        SoftBreakMode = SoftBreakMode.Keep
     };
 
     public static StyleSettings Minimal() => new()

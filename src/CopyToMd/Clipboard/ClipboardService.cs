@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 using CopyToMd.Conversion;
 using CopyToMd.Interop;
@@ -25,7 +26,7 @@ public sealed class ClipboardService : IClipboardService
             try
             {
                 var data = System.Windows.Forms.Clipboard.GetDataObject() ?? throw new InvalidOperationException("剪贴板当前没有可读内容。");
-                var html = ReadString(data, DataFormats.Html);
+                var html = ReadHtml(data);
                 var rtf = ReadString(data, DataFormats.Rtf);
                 var text = ReadString(data, DataFormats.UnicodeText) ?? ReadString(data, DataFormats.Text);
                 var totalLength = (html?.Length ?? 0) + (rtf?.Length ?? 0) + (text?.Length ?? 0);
@@ -126,4 +127,35 @@ public sealed class ClipboardService : IClipboardService
     }
 
     private static string? ReadString(IDataObject data, string format) => data.GetData(format) as string;
+
+    private static string? ReadHtml(IDataObject data)
+    {
+        // WinForms decodes CF_HTML with the system ANSI code page, which corrupts
+        // UTF-8 fragments (e.g. PowerPoint). Read the raw bytes and decode ourselves.
+        var bytes = NativeMethods.ReadClipboardFormatBytes("HTML Format");
+        if (bytes is { Length: > 0 })
+        {
+            var length = bytes.Length;
+            while (length > 0 && bytes[length - 1] == 0)
+            {
+                length--;
+            }
+
+            return DecodeHtml(bytes.AsSpan(0, length));
+        }
+
+        return ReadString(data, DataFormats.Html);
+    }
+
+    private static string DecodeHtml(ReadOnlySpan<byte> bytes)
+    {
+        try
+        {
+            return new UTF8Encoding(false, true).GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return Encoding.Default.GetString(bytes);
+        }
+    }
 }

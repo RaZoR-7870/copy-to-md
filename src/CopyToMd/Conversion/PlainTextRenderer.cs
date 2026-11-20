@@ -23,6 +23,14 @@ public sealed class PlainTextRenderer
             }
 
             var block = document.Blocks[index];
+            if (block.Kind == BlockKind.Table && block.Table is { Count: > 0 })
+            {
+                output.Append(string.Join(document.NewLine, block.Table.Select(row =>
+                    string.Join('\t', row.Cells.Select(cell =>
+                        string.Concat(InlineScriptNormalizer.Normalize(cell.Inlines).Select(RenderRun)))))));
+                continue;
+            }
+
             if (block.Kind == BlockKind.ListItem)
             {
                 output.Append(' ', Math.Max(0, block.Level) * 4);

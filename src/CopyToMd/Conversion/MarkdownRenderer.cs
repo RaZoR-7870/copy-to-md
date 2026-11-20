@@ -27,6 +27,13 @@ public sealed class MarkdownRenderer
                 output.Append(tight ? document.NewLine : document.NewLine + document.NewLine);
             }
 
+            if (block.Kind == BlockKind.Table && block.Table is { Count: > 0 })
+            {
+                output.Append(RenderTable(block.Table, style));
+                previous = block;
+                continue;
+            }
+
             switch (block.Kind)
             {
                 case BlockKind.Heading:
@@ -56,6 +63,47 @@ public sealed class MarkdownRenderer
         }
 
         return output.ToString();
+    }
+
+    private static string RenderTable(List<TableRow> rows, StyleSettings style)
+    {
+        var width = rows.Max(row => row.Cells.Count);
+        var output = new StringBuilder();
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (index > 0)
+            {
+                output.Append('\n');
+            }
+
+            output.Append('|');
+            for (var column = 0; column < width; column++)
+            {
+                var cell = column < rows[index].Cells.Count ? RenderTableCell(rows[index].Cells[column], style) : string.Empty;
+                output.Append(' ').Append(cell).Append(" |");
+            }
+
+            if (index == 0)
+            {
+                output.Append('\n').Append('|');
+                for (var column = 0; column < width; column++)
+                {
+                    output.Append(" --- |");
+                }
+            }
+        }
+
+        return output.ToString();
+    }
+
+    private static string RenderTableCell(TableCell cell, StyleSettings style)
+    {
+        var text = RenderInlines(cell.Inlines, false, style);
+        return text.Replace("\r\n", " ", StringComparison.Ordinal)
+            .Replace('\n', ' ')
+            .Replace('\v', ' ')
+            .Replace("|", "\\|", StringComparison.Ordinal)
+            .Trim();
     }
 
     private static string RenderInlines(IEnumerable<InlineRun> runs, bool suppressBold, StyleSettings style)

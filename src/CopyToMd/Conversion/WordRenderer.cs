@@ -17,7 +17,7 @@ public sealed class WordRenderer
         var colors = new List<string>();
         if (style.KeepColor)
         {
-            colors = document.Blocks.SelectMany(block => block.Inlines)
+            colors = document.Blocks.SelectMany(BlockRuns)
                 .Select(run => run.Color)
                 .Where(color => color is not null && TryParseColor(color, out _, out _, out _))
                 .Distinct()
@@ -67,6 +67,24 @@ public sealed class WordRenderer
                     AppendRuns(output, block.Inlines, colors);
                     output.Append(@"\par");
                     break;
+                case BlockKind.Table when block.Table is { Count: > 0 }:
+                    foreach (var row in block.Table)
+                    {
+                        output.Append(@"\pard\sa60\f0\fs22 ");
+                        for (var column = 0; column < row.Cells.Count; column++)
+                        {
+                            if (column > 0)
+                            {
+                                output.Append(@"\tab ");
+                            }
+
+                            AppendRuns(output, row.Cells[column].Inlines, colors);
+                        }
+
+                        output.Append(@"\par");
+                    }
+
+                    break;
                 default:
                     output.Append(@"\pard\sa120\f0\fs22 ");
                     AppendRuns(output, block.Inlines, colors);
@@ -78,6 +96,11 @@ public sealed class WordRenderer
         output.Append('}');
         return output.ToString();
     }
+
+    private static IEnumerable<InlineRun> BlockRuns(DocumentBlock block) =>
+        block.Kind == BlockKind.Table && block.Table is not null
+            ? block.Table.SelectMany(row => row.Cells.SelectMany(cell => cell.Inlines))
+            : block.Inlines;
 
     private void AppendRuns(StringBuilder output, IEnumerable<InlineRun> runs, List<string> colors)
     {
