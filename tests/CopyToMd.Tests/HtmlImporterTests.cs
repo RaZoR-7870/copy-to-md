@@ -15,7 +15,7 @@ public sealed class HtmlImporterTests
     {
         const string html = "<h1>标题</h1><ul><li><strong>粗体</strong>与<em>斜体</em><ul><li><a href=\"https://example.com\">链接</a></li></ul></li></ul>";
         Assert.True(importer.TryImport(html, out var document));
-        Assert.Equal("# 标题\n\n- **粗体**与*斜体*\n  - [链接](https://example.com/)", renderer.Render(document!));
+        Assert.Equal("# 标题\n- **粗体**与*斜体*\n  - [链接](https://example.com/)", renderer.Render(document!));
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public sealed class HtmlImporterTests
     {
         const string html = "<p>l normal text</p><p><span style=\"font-family:Wingdings\">l</span> bullet</p>";
         Assert.True(importer.TryImport(html, out var document));
-        Assert.Equal("l normal text\n\n- bullet", renderer.Render(document!));
+        Assert.Equal("l normal text\n- bullet", renderer.Render(document!));
     }
 
     [Fact]

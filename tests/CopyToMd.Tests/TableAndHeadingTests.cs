@@ -101,7 +101,6 @@ public class TableAndHeadingTests
 
     private const string ShiftedMinusOne =
         "**Properties of logic gates**\n" +
-        "\n" +
         "- **Completeness**\n" +
         "  - **can implement any truth table with AND, OR, NOT**\n" +
         "- **DeMorgan's Law**\n" +
@@ -147,7 +146,6 @@ public class TableAndHeadingTests
         var result = new ConversionService(style).Convert(PartialHierarchyFragment, null, null, OutputMode.Markdown);
         Assert.Equal(
             "**Completeness**\n" +
-            "\n" +
             "- **can implement any truth table with AND, OR, NOT**",
             result.Text);
     }
@@ -159,7 +157,6 @@ public class TableAndHeadingTests
         var result = new ConversionService(style).Convert(PartialHierarchyFragment, null, null, OutputMode.Markdown);
         Assert.Equal(
             "**Completeness**\n" +
-            "\n" +
             "- **can implement any truth table with AND, OR, NOT**",
             result.Text);
     }
@@ -176,5 +173,42 @@ public class TableAndHeadingTests
             "    - **DeMorgan's Law**\n" +
             "      - **convert AND to OR by inverting inputs and output**",
             result.Text);
+    }
+
+    private const string MixedProseFragment = """
+        <html><body><!--StartFragment-->
+        <p style='margin-left:0in'><span style='font-weight:bold'>Intro sentence.</span></p>
+        <div style='margin-left:.38in;text-indent:-.38in'><span style='mso-special-format:bullet;font-family:Wingdings'>n</span><span style='font-weight:bold'>Top item</span></div>
+        <div style='margin-left:.81in;text-indent:-.31in'><span style='mso-special-format:bullet;font-family:Wingdings'>l</span><span style='font-weight:bold'>Sub item</span></div>
+        <!--EndFragment--></body></html>
+        """;
+
+    [Fact]
+    public void OffsetSkippedWhenSourceContainsPlainText()
+    {
+        var style = new StyleSettings { ListLevelOffset = -1 };
+        var result = new ConversionService(style).Convert(MixedProseFragment, null, null, OutputMode.Markdown);
+        Assert.Equal("**Intro sentence.**\n- **Top item**\n  - **Sub item**", result.Text);
+    }
+
+    [Fact]
+    public void HeadingsDoNotBlockOffset()
+    {
+        const string html = "<h2>Section</h2>" +
+            "<div style='margin-left:.38in;text-indent:-.38in'><span style='mso-special-format:bullet;font-family:Wingdings'>n</span><span style='font-weight:bold'>Top item</span></div>" +
+            "<div style='margin-left:.81in;text-indent:-.31in'><span style='mso-special-format:bullet;font-family:Wingdings'>l</span><span style='font-weight:bold'>Sub item</span></div>";
+        var style = new StyleSettings { ListLevelOffset = -1 };
+        var result = new ConversionService(style).Convert(html, null, null, OutputMode.Markdown);
+        Assert.Equal("## Section\n**Top item**\n- **Sub item**", result.Text);
+    }
+
+    [Fact]
+    public void EmptyParagraphsDoNotBlockOffset()
+    {
+        const string html = "<p></p>" +
+            "<div style='margin-left:.38in;text-indent:-.38in'><span style='mso-special-format:bullet;font-family:Wingdings'>n</span><span style='font-weight:bold'>Top item</span></div>";
+        var style = new StyleSettings { ListLevelOffset = -1 };
+        var result = new ConversionService(style).Convert(html, null, null, OutputMode.Markdown);
+        Assert.Equal("**Top item**", result.Text);
     }
 }

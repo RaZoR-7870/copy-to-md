@@ -19,7 +19,7 @@ public sealed class RtfAndWordTests
         var importer = new RtfImporter();
         Assert.True(importer.TryImport(rtf, "Title\r\nNormal\r\nl\tFirst\r\nm\tSecond", out var document));
         var markdown = new MarkdownRenderer().Render(document!);
-        Assert.Equal("# Title\n\nNormal\n\n- First\n- **Second**", markdown);
+        Assert.Equal("# Title\nNormal\n- First\n- **Second**", markdown);
     });
 
     [Fact]

@@ -140,7 +140,7 @@ public sealed class StyleSettings
 
     [Category("2. 段落与列表")]
     [DisplayName("列表级别位移")]
-    [Description("正数加深缩进；负数提升级别，最高级列表可转为纯文本（来源最高为 2 级时 -2 生效）。负数过小时自动收敛，最多一个级别变为纯文本。")]
+    [Description("正数加深缩进；负数提升级别，最高级列表可转为纯文本（来源最高为 2 级时 -2 生效）。负数过小时自动收敛，最多一个级别变为纯文本。复制内容本身含纯文本段落时不偏移。")]
     public int ListLevelOffset { get; set; }
 
     [Category("2. 段落与列表")]
@@ -165,8 +165,8 @@ public sealed class StyleSettings
 
     [Category("2. 段落与列表")]
     [DisplayName("段落间距")]
-    [Description("Markdown 段落之间使用空行或单换行。")]
-    public ParagraphSpacing ParagraphSpacing { get; set; } = ParagraphSpacing.BlankLine;
+    [Description("Markdown 段落之间使用空行或单换行。默认单换行，避免粘贴到笔记时产生多余空白行。")]
+    public ParagraphSpacing ParagraphSpacing { get; set; } = ParagraphSpacing.SingleNewline;
 
     [Category("2. 段落与列表")]
     [DisplayName("移除空段落")]

@@ -15,7 +15,11 @@ public static partial class DocumentStyler
             .Select(block => block.Level)
             .DefaultIfEmpty(0)
             .Min();
-        var listLevelOffset = Math.Max(style.ListLevelOffset, -(minListLevel + 1));
+        // The offset targets pure-list copies. When the source already mixes in plain
+        // prose paragraphs, keep the original structure untouched.
+        var hasPlainText = document.Blocks.Any(block =>
+            block.Kind == BlockKind.Paragraph && !string.IsNullOrWhiteSpace(block.Text));
+        var listLevelOffset = hasPlainText ? 0 : Math.Max(style.ListLevelOffset, -(minListLevel + 1));
 
         foreach (var block in document.Blocks)
         {
