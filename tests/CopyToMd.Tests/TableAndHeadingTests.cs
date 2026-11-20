@@ -98,4 +98,43 @@ public class TableAndHeadingTests
         Assert.DoesNotContain("# The data path", result.Text);
         Assert.Contains("**The data path of a computer is all the logic used to process information.**", result.Text);
     }
+
+    private const string ShiftedMinusOne =
+        "**Properties of logic gates**\n" +
+        "\n" +
+        "- **Completeness**\n" +
+        "  - **can implement any truth table with AND, OR, NOT**\n" +
+        "- **DeMorgan's Law**\n" +
+        "  - **convert AND to OR by inverting inputs and output**";
+
+    [Fact]
+    public void ListLevelOffsetMinusOneTurnsTopLevelIntoText()
+    {
+        var style = new StyleSettings { ListLevelOffset = -1 };
+        var result = new ConversionService(style).Convert(DeepDashFragment, null, null, OutputMode.Markdown);
+        Assert.Equal(ShiftedMinusOne, result.Text);
+    }
+
+    [Fact]
+    public void ListLevelOffsetClampsSoOnlyOneLevelBecomesText()
+    {
+        var style = new StyleSettings { ListLevelOffset = -5 };
+        var result = new ConversionService(style).Convert(DeepDashFragment, null, null, OutputMode.Markdown);
+        Assert.Equal(ShiftedMinusOne, result.Text);
+        Assert.Equal(-1, style.ListLevelOffset);
+    }
+
+    [Fact]
+    public void ListLevelOffsetPositiveDeepensIndent()
+    {
+        var style = new StyleSettings { ListLevelOffset = 1 };
+        var result = new ConversionService(style).Convert(DeepDashFragment, null, null, OutputMode.Markdown);
+        Assert.Equal(
+            "  - **Properties of logic gates**\n" +
+            "    - **Completeness**\n" +
+            "      - **can implement any truth table with AND, OR, NOT**\n" +
+            "    - **DeMorgan's Law**\n" +
+            "      - **convert AND to OR by inverting inputs and output**",
+            result.Text);
+    }
 }

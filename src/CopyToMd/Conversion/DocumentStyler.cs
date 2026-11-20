@@ -63,9 +63,23 @@ public static partial class DocumentStyler
                     block.ListKind = ListKind.None;
                     orderedCounter = 0;
                 }
-                else if (style.RestartOrderedLists && block.ListKind == ListKind.Ordered)
+                else
                 {
-                    block.Number = ++orderedCounter;
+                    var shiftedLevel = block.Level + style.ListLevelOffset;
+                    if (shiftedLevel < 0)
+                    {
+                        block.Kind = BlockKind.Paragraph;
+                        block.ListKind = ListKind.None;
+                        orderedCounter = 0;
+                    }
+                    else
+                    {
+                        block.Level = shiftedLevel;
+                        if (style.RestartOrderedLists && block.ListKind == ListKind.Ordered)
+                        {
+                            block.Number = ++orderedCounter;
+                        }
+                    }
                 }
             }
             else

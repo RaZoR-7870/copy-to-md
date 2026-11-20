@@ -139,6 +139,11 @@ public sealed class StyleSettings
     public ListMode ListMode { get; set; } = ListMode.Keep;
 
     [Category("2. 段落与列表")]
+    [DisplayName("列表级别位移")]
+    [Description("正数加深缩进；负数提升级别，-1 时最高级列表转为纯文本、更深层级依次上移。最小 -1，最多一个级别变为纯文本。")]
+    public int ListLevelOffset { get; set; }
+
+    [Category("2. 段落与列表")]
     [DisplayName("Markdown 无序符号")]
     [Description("Markdown 无序列表使用的符号。")]
     public BulletMarker BulletMarker { get; set; } = BulletMarker.Dash;
@@ -219,6 +224,7 @@ public sealed class StyleSettings
     {
         HeadingLevelOffset = Math.Clamp(HeadingLevelOffset, -5, 5);
         MaxHeadingLevel = Math.Clamp(MaxHeadingLevel, 1, 6);
+        ListLevelOffset = Math.Clamp(ListLevelOffset, -1, 5);
         ListIndentSpaces = Math.Clamp(ListIndentSpaces, 0, 8);
         MinSuspectLines = Math.Clamp(MinSuspectLines, 1, 20);
     }
