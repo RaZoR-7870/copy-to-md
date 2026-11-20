@@ -60,6 +60,7 @@ public static class UpdateService
         var client = new HttpClient(handler) { Timeout = timeout ?? TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("CopyToMd", CurrentVersion.ToString()));
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
         return client;
     }
 
@@ -67,7 +68,11 @@ public static class UpdateService
     {
         using var client = CreateClient(proxy);
         using var response = await client.GetAsync(LatestReleaseApi, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await BuildHttpErrorAsync(response, cancellationToken);
+        }
+
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
         var root = document.RootElement;
@@ -111,7 +116,11 @@ public static class UpdateService
     {
         using var client = CreateClient(proxy, TimeSpan.FromMinutes(10));
         using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await BuildHttpErrorAsync(response, cancellationToken);
+        }
+
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var destination = File.Create(destinationPath);
         var buffer = new byte[81920];
@@ -156,6 +165,31 @@ public static class UpdateService
             UseShellExecute = false,
             CreateNoWindow = true
         });
+    }
+
+    private static async Task<InvalidOperationException> BuildHttpErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var detail = string.Empty;
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.TryGetProperty("message", out var message))
+            {
+                detail = message.GetString() ?? string.Empty;
+            }
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or HttpRequestException)
+        {
+        }
+
+        var hint = (int)response.StatusCode switch
+        {
+            403 or 429 => "（可能是 GitHub API 速率限制，共享代理出口 IP 常见，请稍后再试）",
+            404 => "（仓库不存在或为私有，匿名无法访问）",
+            _ => string.Empty
+        };
+        return new InvalidOperationException($"检查更新失败（HTTP {(int)response.StatusCode}）：{detail}{hint}");
     }
 
     private static Version ParseVersion(string tag)
