@@ -319,23 +319,35 @@ public sealed class HtmlImporter
     private static void NormalizeFlatListLevels(RichDocument document)
     {
         // PowerPoint emits flat <div>/<p> bullets distinguished only by margin-left,
-        // not nested <ul>. Recover nesting from the distinct indent values.
-        var levels = document.Blocks
+        // not nested <ul>. Map margins to absolute outline levels (PPT indents roughly
+        // 7/16in per level) so copying a partial hierarchy keeps its depth and list
+        // level offsets stay meaningful. Distinct margins must keep distinct levels.
+        var margins = document.Blocks
             .Where(block => block.Kind == BlockKind.ListItem && block.IndentHint.HasValue)
             .Select(block => Math.Round(block.IndentHint!.Value, 3))
             .Distinct()
             .OrderBy(indent => indent)
             .ToList();
-        if (levels.Count < 2)
+        if (margins.Count == 0)
         {
             return;
+        }
+
+        var map = new Dictionary<double, int>();
+        var previous = -1;
+        foreach (var margin in margins)
+        {
+            var absolute = Math.Max(0, (int)Math.Round(margin / 0.4375, MidpointRounding.AwayFromZero) - 1);
+            var level = Math.Max(absolute, previous + 1);
+            map[margin] = level;
+            previous = level;
         }
 
         foreach (var block in document.Blocks)
         {
             if (block.Kind == BlockKind.ListItem && block.IndentHint.HasValue)
             {
-                block.Level = Math.Max(0, levels.IndexOf(Math.Round(block.IndentHint.Value, 3)));
+                block.Level = map[Math.Round(block.IndentHint.Value, 3)];
             }
         }
     }

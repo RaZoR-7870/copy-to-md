@@ -10,6 +10,12 @@ public static partial class DocumentStyler
         style.Normalize();
         var orderedCounter = 0;
         var keptBlocks = new List<DocumentBlock>();
+        var minListLevel = document.Blocks
+            .Where(block => block.Kind == BlockKind.ListItem)
+            .Select(block => block.Level)
+            .DefaultIfEmpty(0)
+            .Min();
+        var listLevelOffset = Math.Max(style.ListLevelOffset, -(minListLevel + 1));
 
         foreach (var block in document.Blocks)
         {
@@ -65,7 +71,7 @@ public static partial class DocumentStyler
                 }
                 else
                 {
-                    var shiftedLevel = block.Level + style.ListLevelOffset;
+                    var shiftedLevel = block.Level + listLevelOffset;
                     if (shiftedLevel < 0)
                     {
                         block.Kind = BlockKind.Paragraph;

@@ -140,7 +140,7 @@ public sealed class StyleSettings
 
     [Category("2. 段落与列表")]
     [DisplayName("列表级别位移")]
-    [Description("正数加深缩进；负数提升级别，-1 时最高级列表转为纯文本、更深层级依次上移。最小 -1，最多一个级别变为纯文本。")]
+    [Description("正数加深缩进；负数提升级别，最高级列表可转为纯文本（来源最高为 2 级时 -2 生效）。负数过小时自动收敛，最多一个级别变为纯文本。")]
     public int ListLevelOffset { get; set; }
 
     [Category("2. 段落与列表")]
@@ -224,7 +224,7 @@ public sealed class StyleSettings
     {
         HeadingLevelOffset = Math.Clamp(HeadingLevelOffset, -5, 5);
         MaxHeadingLevel = Math.Clamp(MaxHeadingLevel, 1, 6);
-        ListLevelOffset = Math.Clamp(ListLevelOffset, -1, 5);
+        ListLevelOffset = Math.Clamp(ListLevelOffset, -6, 6);
         ListIndentSpaces = Math.Clamp(ListIndentSpaces, 0, 8);
         MinSuspectLines = Math.Clamp(MinSuspectLines, 1, 20);
     }

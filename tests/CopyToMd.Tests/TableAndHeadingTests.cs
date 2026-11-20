@@ -121,7 +121,47 @@ public class TableAndHeadingTests
         var style = new StyleSettings { ListLevelOffset = -5 };
         var result = new ConversionService(style).Convert(DeepDashFragment, null, null, OutputMode.Markdown);
         Assert.Equal(ShiftedMinusOne, result.Text);
-        Assert.Equal(-1, style.ListLevelOffset);
+    }
+
+    private const string PartialHierarchyFragment = """
+        <html><body><!--StartFragment-->
+        <div style='margin-left:.81in;text-indent:-.31in'><span style='mso-special-format:bullet;font-family:Wingdings'>l</span><span style='font-weight:bold'>Completeness</span></div>
+        <div style='margin-left:1.25in;text-indent:-.31in'><span style='mso-special-format:bullet;font-family:Arial'>-</span><span style='font-weight:bold'>can implement any truth table with AND, OR, NOT</span></div>
+        <!--EndFragment--></body></html>
+        """;
+
+    [Fact]
+    public void PartialHierarchyKeepsAbsoluteLevels()
+    {
+        var result = new ConversionService().Convert(PartialHierarchyFragment, null, null, OutputMode.Markdown);
+        Assert.Equal(
+            "  - **Completeness**\n" +
+            "    - **can implement any truth table with AND, OR, NOT**",
+            result.Text);
+    }
+
+    [Fact]
+    public void ListLevelOffsetMinusTwoWorksWhenTopLevelIsSecond()
+    {
+        var style = new StyleSettings { ListLevelOffset = -2 };
+        var result = new ConversionService(style).Convert(PartialHierarchyFragment, null, null, OutputMode.Markdown);
+        Assert.Equal(
+            "**Completeness**\n" +
+            "\n" +
+            "- **can implement any truth table with AND, OR, NOT**",
+            result.Text);
+    }
+
+    [Fact]
+    public void OverNegativeOffsetStillConvertsOnlyOneLevel()
+    {
+        var style = new StyleSettings { ListLevelOffset = -6 };
+        var result = new ConversionService(style).Convert(PartialHierarchyFragment, null, null, OutputMode.Markdown);
+        Assert.Equal(
+            "**Completeness**\n" +
+            "\n" +
+            "- **can implement any truth table with AND, OR, NOT**",
+            result.Text);
     }
 
     [Fact]
