@@ -234,6 +234,10 @@ public sealed class HtmlImporter
                         var block = AddBlock(document, BlockKind.Paragraph, runs, accumulator.FoundSymbolBullet);
                         block.IndentHint = ParseMarginLeft(element);
                         block.FontSizeHint = ParseMaxFontSize(element);
+                        if (block.Kind == BlockKind.Paragraph)
+                        {
+                            TryRecoverHangingIndentBullet(block, element);
+                        }
                     }
                 }
 
@@ -364,6 +368,52 @@ public sealed class HtmlImporter
 
     private static Regex MarginLeftRegex() =>
         new(@"margin-left\s*:\s*(-?[0-9.]+)\s*(in|pt|px|cm|mm)?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    private static void TryRecoverHangingIndentBullet(DocumentBlock block, IElement element)
+    {
+        // Some PPT bullets carry neither a symbol font nor mso-special-format (e.g. a
+        // literal "-" span). The hanging indent (positive margin-left + negative
+        // text-indent) plus a leading bullet glyph still identifies them as list items.
+        if (block.Inlines.Count == 0 || ParseMarginLeft(element) is null or <= 0)
+        {
+            return;
+        }
+
+        var css = element.GetAttribute("style") ?? string.Empty;
+        var indentMatch = TextIndentRegex().Match(css);
+        if (!indentMatch.Success ||
+            !double.TryParse(indentMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var indent) ||
+            indent >= 0)
+        {
+            return;
+        }
+
+        var first = block.Inlines[0];
+        var match = LeadingBulletRegex().Match(first.Text);
+        if (!match.Success)
+        {
+            return;
+        }
+
+        var remainder = first.Text[match.Length..];
+        if (remainder.Length == 0)
+        {
+            block.Inlines.RemoveAt(0);
+        }
+        else
+        {
+            block.Inlines[0] = first with { Text = remainder };
+        }
+
+        block.Kind = BlockKind.ListItem;
+        block.ListKind = ListKind.Bullet;
+    }
+
+    private static Regex TextIndentRegex() =>
+        new(@"text-indent\s*:\s*(-?[0-9.]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    private static Regex LeadingBulletRegex() =>
+        new(@"^(?:[-•◦▪·∙]|[lmn]\t)[ \t]*", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
 
     private static void ProcessTable(IElement table, RichDocument document)
     {

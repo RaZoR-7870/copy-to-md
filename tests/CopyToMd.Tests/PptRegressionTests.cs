@@ -145,4 +145,31 @@ public class PptRegressionTests
         var result = new ConversionService().Convert(full, null, null, OutputMode.Markdown);
         Assert.Equal("- **第一条**\n- **最后一条**", result.Text);
     }
+
+    private const string UnmarkedDashFragment = """
+        <html><body><!--StartFragment-->
+        <div style='margin-left:.38in;text-indent:-.38in'><span style='font-size:24.0pt'><span style='font-family:Wingdings'>n</span></span><span style='font-size:24.0pt;font-weight:bold'>Properties of logic gates</span></div>
+        <div style='margin-left:.81in;text-indent:-.31in'><span style='font-size:20.0pt'><span style='font-family:Wingdings'>l</span></span><span style='font-size:20.0pt;font-weight:bold'>Completeness</span></div>
+        <div style='margin-left:1.25in;text-indent:-.31in'><span style='font-size:18.0pt;font-weight:bold'>-</span><span style='font-size:18.0pt;font-weight:bold'>can implement any truth table with AND, OR, NOT</span></div>
+        <!--EndFragment--></body></html>
+        """;
+
+    [Fact]
+    public void HangingIndentRecoversUnmarkedDashBullet()
+    {
+        var result = new ConversionService().Convert(UnmarkedDashFragment, null, null, OutputMode.Markdown);
+        Assert.Equal(
+            "- **Properties of logic gates**\n" +
+            "  - **Completeness**\n" +
+            "    - **can implement any truth table with AND, OR, NOT**",
+            result.Text);
+    }
+
+    [Fact]
+    public void HangingIndentProseWithoutGlyphStaysParagraph()
+    {
+        const string html = "<p style='margin-left:.5in;text-indent:-.25in'>ordinary prose line</p>";
+        var result = new ConversionService().Convert(html, null, null, OutputMode.Markdown);
+        Assert.Equal("ordinary prose line", result.Text);
+    }
 }
