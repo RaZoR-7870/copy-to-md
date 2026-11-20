@@ -26,6 +26,18 @@ public sealed class ClipboardService : IClipboardService
             try
             {
                 var data = System.Windows.Forms.Clipboard.GetDataObject() ?? throw new InvalidOperationException("剪贴板当前没有可读内容。");
+                if (data.GetDataPresent(OwnerFormat))
+                {
+                    // The clipboard already holds a previous smart-paste result. Re-converting
+                    // it would escape Markdown a second time; signal a plain re-paste instead.
+                    if (NativeMethods.GetClipboardSequenceNumber() != sequence)
+                    {
+                        throw new ClipboardChangedException("读取期间剪贴板已变化，请重新执行智能粘贴。");
+                    }
+
+                    return new ClipboardSnapshot(sequence, null, null, null, IsOwnOutput: true);
+                }
+
                 var html = ReadHtml(data);
                 var rtf = ReadString(data, DataFormats.Rtf);
                 var text = ReadString(data, DataFormats.UnicodeText) ?? ReadString(data, DataFormats.Text);

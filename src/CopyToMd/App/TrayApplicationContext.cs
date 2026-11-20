@@ -34,6 +34,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         {
             MaxClipboardCharacters = settings.MaxClipboardCharacters
         };
+        coordinator.ApplySettings(settings);
 
         statusItem = new ToolStripMenuItem("最近状态：等待智能粘贴") { Enabled = false };
         var menu = new ContextMenuStrip();

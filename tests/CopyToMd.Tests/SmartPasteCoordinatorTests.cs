@@ -1,4 +1,5 @@
 using CopyToMd.Clipboard;
+using CopyToMd.Configuration;
 using CopyToMd.Conversion;
 using CopyToMd.Target;
 using Xunit;
@@ -62,6 +63,34 @@ public sealed class SmartPasteCoordinatorTests
         Assert.False(statuses[^1].Success);
     }
 
+    [Fact]
+    public void OwnClipboardOutputIsRepastedWithoutConversion()
+    {
+        var clipboard = new FakeClipboardService { OwnOutput = true };
+        var paste = new FakePasteService();
+        var coordinator = CreateCoordinator(clipboard, paste, out var statuses);
+
+        coordinator.Execute();
+
+        Assert.Null(clipboard.WrittenResult);
+        Assert.Equal(1, paste.SendCount);
+        Assert.True(statuses[^1].Success);
+        Assert.Contains("跳过重复转换", statuses[^1].Message);
+    }
+
+    [Fact]
+    public void ApplySettingsChangesConversionStyle()
+    {
+        var clipboard = new FakeClipboardService { Html = "<p><b>加粗</b></p>", Text = "加粗" };
+        var paste = new FakePasteService();
+        var coordinator = CreateCoordinator(clipboard, paste, out _);
+
+        coordinator.ApplySettings(new AppSettings { Style = new StyleSettings { KeepBold = false } });
+        coordinator.Execute();
+
+        Assert.Equal("加粗", clipboard.WrittenResult!.Text);
+    }
+
     private static SmartPasteCoordinator CreateCoordinator(
         FakeClipboardService clipboard,
         FakePasteService paste,
@@ -103,8 +132,11 @@ public sealed class SmartPasteCoordinatorTests
         public ConversionResult? WrittenResult { get; private set; }
         public Exception? WriteException { get; init; }
         public int ThrowOnEnsureCall { get; init; }
+        public bool OwnOutput { get; init; }
+        public string? Html { get; init; }
+        public string? Text { get; init; } = "l first\nl second\nl third";
 
-        public ClipboardSnapshot Capture(int maxCharacters) => new(100, null, null, "l first\nl second\nl third");
+        public ClipboardSnapshot Capture(int maxCharacters) => new(100, Html, null, Text, OwnOutput);
 
         public uint Write(ConversionResult result, uint expectedSequence, nint expectedWindow)
         {

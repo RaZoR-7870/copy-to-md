@@ -4,7 +4,8 @@ public sealed record ClipboardSnapshot(
     uint SequenceNumber,
     string? Html,
     string? Rtf,
-    string? UnicodeText);
+    string? UnicodeText,
+    bool IsOwnOutput = false);
 
 public sealed class ClipboardChangedException : InvalidOperationException
 {

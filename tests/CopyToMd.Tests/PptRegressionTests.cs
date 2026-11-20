@@ -86,4 +86,63 @@ public class PptRegressionTests
         var extracted = CfHtmlExtractor.ExtractFragment(full);
         Assert.Equal(fragment, extracted.Trim());
     }
+
+    [Fact]
+    public void CfHtmlExtractorPrefersMarkersOverDriftedOffsets()
+    {
+        const string fragment = "<div>第一项</div><div>最后一项</div>";
+        const string prefix = "<html><body><!--StartFragment-->";
+        const string suffix = "<!--EndFragment--></body></html>";
+        const string header = "Version:1.0\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+
+        var headerLength = Encoding.UTF8.GetByteCount(header);
+        var startFragment = headerLength + Encoding.UTF8.GetByteCount(prefix);
+        // Deliberately stale EndFragment: it cuts into the last div.
+        var endFragment = startFragment + Encoding.UTF8.GetByteCount("<div>第一项</div><div>最后一");
+        var full = (header + prefix + fragment + suffix)
+            .Replace("StartFragment:0000000000", $"StartFragment:{startFragment:D10}")
+            .Replace("EndFragment:0000000000", $"EndFragment:{endFragment:D10}");
+
+        var extracted = CfHtmlExtractor.ExtractFragment(full);
+        Assert.Equal(fragment, extracted.Trim());
+    }
+
+    [Fact]
+    public void CfHtmlExtractorRepairsTruncatedTrailingTag()
+    {
+        const string content = "<div>完整</div><div style='margin-left:1in'>被截断";
+        const string prefix = "<html><body>";
+        const string header = "Version:1.0\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+
+        var headerLength = Encoding.UTF8.GetByteCount(header);
+        var startFragment = headerLength + Encoding.UTF8.GetByteCount(prefix);
+        var endFragment = startFragment + Encoding.UTF8.GetByteCount("<div>完整</div><div style='margin-left:1");
+        var full = (header + prefix + content)
+            .Replace("StartFragment:0000000000", $"StartFragment:{startFragment:D10}")
+            .Replace("EndFragment:0000000000", $"EndFragment:{endFragment:D10}");
+
+        var extracted = CfHtmlExtractor.ExtractFragment(full);
+        Assert.Equal("<div>完整</div>", extracted.Trim());
+    }
+
+    [Fact]
+    public void DriftedOffsetsDoNotDropLastBullet()
+    {
+        const string fragment =
+            "<div style='margin-left:.38in'><span style='mso-special-format:bullet;font-family:Wingdings'>n</span><span style='font-weight:bold'>第一条</span></div>" +
+            "<div style='margin-left:.38in'><span style='mso-special-format:bullet;font-family:Wingdings'>n</span><span style='font-weight:bold'>最后一条</span></div>";
+        const string prefix = "<html><body><!--StartFragment-->";
+        const string suffix = "<!--EndFragment--></body></html>";
+        const string header = "Version:1.0\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+
+        var headerLength = Encoding.UTF8.GetByteCount(header);
+        var startFragment = headerLength + Encoding.UTF8.GetByteCount(prefix);
+        var endFragment = startFragment + Encoding.UTF8.GetByteCount(fragment) - 20;
+        var full = (header + prefix + fragment + suffix)
+            .Replace("StartFragment:0000000000", $"StartFragment:{startFragment:D10}")
+            .Replace("EndFragment:0000000000", $"EndFragment:{endFragment:D10}");
+
+        var result = new ConversionService().Convert(full, null, null, OutputMode.Markdown);
+        Assert.Equal("- **第一条**\n- **最后一条**", result.Text);
+    }
 }

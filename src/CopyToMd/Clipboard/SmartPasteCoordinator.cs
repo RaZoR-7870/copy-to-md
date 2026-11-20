@@ -54,8 +54,14 @@ public sealed class SmartPasteCoordinator
             var resolution = targetResolver.Resolve(target, OverrideMode);
             var snapshot = clipboardService.Capture(MaxClipboardCharacters);
             clipboardService.EnsureCurrent(snapshot.SequenceNumber, target.WindowHandle);
-            var result = conversionService.Convert(snapshot.Html, snapshot.Rtf, snapshot.UnicodeText, resolution.Mode);
-            var newSequence = clipboardService.Write(result, snapshot.SequenceNumber, target.WindowHandle);
+
+            var newSequence = snapshot.SequenceNumber;
+            ConversionResult? result = null;
+            if (!snapshot.IsOwnOutput)
+            {
+                result = conversionService.Convert(snapshot.Html, snapshot.Rtf, snapshot.UnicodeText, resolution.Mode);
+                newSequence = clipboardService.Write(result, snapshot.SequenceNumber, target.WindowHandle);
+            }
 
             if (!pasteService.WaitForModifierKeys())
             {
@@ -68,13 +74,19 @@ public sealed class SmartPasteCoordinator
                 throw new InvalidOperationException("已转换剪贴板，但无法完整发送粘贴按键。请检查 Ctrl/V 键状态，必要时手动按 Ctrl+V；目标应用也可能以更高权限运行。");
             }
 
+            if (snapshot.IsOwnOutput)
+            {
+                Report(new SmartPasteStatus(true, "剪贴板已是上次转换结果，已直接粘贴（跳过重复转换）。"));
+                return;
+            }
+
             var modeName = resolution.Mode switch
             {
                 OutputMode.Markdown => "Markdown",
                 OutputMode.Word => "Word",
                 _ => "纯文本"
             };
-            var warning = result.Document.Warnings.Count > 0 && result.Document.UsedFallback ? "（已使用纯文本回退）" : string.Empty;
+            var warning = result!.Document.Warnings.Count > 0 && result.Document.UsedFallback ? "（已使用纯文本回退）" : string.Empty;
             var targetName = string.IsNullOrWhiteSpace(target.ProcessName) ? "当前应用" : target.ProcessName;
             Report(new SmartPasteStatus(true, $"已向 {targetName} 发送 {modeName} 粘贴{warning}。"));
         }

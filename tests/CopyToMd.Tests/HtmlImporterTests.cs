@@ -53,7 +53,7 @@ public sealed class HtmlImporterTests
         var html = string.Format(headerTemplate, start, end) + fragment;
 
         var extracted = CfHtmlExtractor.ExtractFragment(html);
-        Assert.Equal(fragment, extracted);
+        Assert.Equal("<h1>中文标题</h1>", extracted);
         Assert.True(importer.TryImport(html, out var document));
         Assert.Equal("# 中文标题", renderer.Render(document!));
     }

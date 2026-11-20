@@ -12,6 +12,19 @@ public sealed partial class CfHtmlExtractor
             return string.Empty;
         }
 
+        // Prefer the fragment comment markers: they delimit the intended content exactly,
+        // while byte offsets can drift (e.g. after re-encoding) and cut the last tag short,
+        // which drops the final list bullet and introduces stray blank lines.
+        const string startMarker = "<!--StartFragment-->";
+        const string endMarker = "<!--EndFragment-->";
+        var markerStart = html.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
+        var markerEnd = html.IndexOf(endMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerStart >= 0 && markerEnd > markerStart)
+        {
+            markerStart += startMarker.Length;
+            return RepairTruncatedTag(html[markerStart..markerEnd]);
+        }
+
         try
         {
             var bytes = Encoding.UTF8.GetBytes(html);
@@ -22,26 +35,29 @@ public sealed partial class CfHtmlExtractor
                 int.TryParse(endMatch.Groups[1].Value, out var end) &&
                 start >= 0 && end > start && end <= bytes.Length)
             {
-                return Encoding.UTF8.GetString(bytes, start, end - start);
+                return RepairTruncatedTag(Encoding.UTF8.GetString(bytes, start, end - start));
             }
         }
         catch (EncoderFallbackException)
         {
-            // Fall through to marker-based extraction.
-        }
-
-        const string startMarker = "<!--StartFragment-->";
-        const string endMarker = "<!--EndFragment-->";
-        var markerStart = html.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
-        var markerEnd = html.IndexOf(endMarker, StringComparison.OrdinalIgnoreCase);
-        if (markerStart >= 0 && markerEnd > markerStart)
-        {
-            markerStart += startMarker.Length;
-            return html[markerStart..markerEnd];
+            // Fall through to body-based extraction.
         }
 
         var body = BodyRegex().Match(html);
-        return body.Success ? body.Groups[1].Value : html;
+        return body.Success ? RepairTruncatedTag(body.Groups[1].Value) : html;
+    }
+
+    private static string RepairTruncatedTag(string fragment)
+    {
+        // A fragment may end inside an unfinished tag when offsets are stale; drop the
+        // partial tag so the parser does not swallow the preceding content.
+        var lastOpen = fragment.LastIndexOf('<');
+        if (lastOpen >= 0 && fragment.IndexOf('>', lastOpen) < 0)
+        {
+            return fragment[..lastOpen];
+        }
+
+        return fragment;
     }
 
     [GeneratedRegex(@"(?im)^\s*StartFragment\s*:\s*(\d+)\s*$", RegexOptions.CultureInvariant, 100)]
